@@ -1,0 +1,217 @@
+#!/usr/bin/env bash
+
+set -eo pipefail
+shopt -s extglob
+
+########################################################################
+#                              lockheed                                #
+########################################################################
+#          "Run commands on Ubuntu after screen unlock/login"          #
+########################################################################
+
+########################################################################
+# Global constants
+########################################################################
+
+self="$(basename "$0")"
+title="$self: Run commands on Ubuntu after screen unlock/login (by schapper@)"
+version="1.0.0"
+
+err_usage=64
+err_fatal=65
+err_dependency=66
+
+########################################################################
+# Bootstrap functionality
+########################################################################
+
+function usage() {
+  >&2 <<EOF cat
+usage: $self [OPTIONS] COMMAND [ARGUMENTS]
+       $self [OPTIONS] -c COMMAND
+  (or: $self --help)
+EOF
+}
+
+function help() {
+  >&2 <<EOF cat
+
+$title
+
+OPTIONS:
+  -c, --command=COMMAND pass a single command, without arguments, to the
+                         shell on login or screen unlock.
+  -d, --debug           enable debug settings with ludicrous verbosity.
+  -h, --help            print $self help and exit.
+  -o, --once            exit after executing COMMAND. without this
+                         option, $self will continue waiting on login
+                         and screen unlock events and executing COMMAND
+                         until terminated by a signal.
+  -v, --verbose         enable verbose logging.
+      --version         print version information and exit.
+      --x-debug         enable excessive debug settings.
+
+EXAMPLES:
+  $self --help
+  $self echo 'a b c'
+  $self -c echo
+
+VERSION INFORMATION:
+  GitFarm repo: https://github.com/gogama/lockheed
+  Version:      $version
+EOF
+}
+
+function emit() {
+  >&2 printf '%s: %s\n' "$self" "$*"
+}
+
+function fatal() {
+  emit "$*"
+  exit "$err_fatal"
+}
+
+function bad_usage() {
+  emit "$*"
+  usage
+  exit "$err_usage"
+}
+
+function assert_dependency() {
+  dependency="$1"
+  if ! command -v "$dependency" >/dev/null; then
+    fatal "missing dependency: $dependency. install $dependency before continuing."
+    exit "$err_dependency"
+  fi
+}
+
+is_verbose=
+
+function log_verbose() {
+  if [ -n "$is_verbose" ]; then
+    emit "$*"
+  fi
+}
+
+########################################################################
+# Argument parsing
+########################################################################
+
+command=()
+command_explicit=
+debug_level=
+is_once=
+
+function parse_args() {
+  local explicit_command=
+  local implicit_command=
+
+  while (($#)); do
+    local arg="$1"
+    shift
+
+    case "$arg" in
+    -c|--command)
+      if [ $# != 1 ]; then
+        bad_usage "$arg requires exactly one command argument"
+      fi
+      command=("$1")
+      command_explicit=true
+      break
+      ;;
+    --command=*)
+      if [ $# != 0 ]; then
+        bad_usage "--command= must be the last option"
+      fi
+      command=("${arg/#*=/}")
+      command_explicit=true
+      break
+      ;;
+    -d|--debug)
+      debug_level="${debug_level:-normal}"
+      ;;
+    -h|--help)
+      usage
+      help
+      exit 0
+      ;;
+    -o|--once)
+      is_once="$arg"
+      ;;
+    -v|--verbose)
+      is_verbose="$arg"
+      ;;
+    --version)
+      printf "%s version %s\n" "$self" "$version"
+      exit 0
+      ;;
+    --x-debug)
+      debug_level=excessive
+      ;;
+    *)
+      command=("$arg" "$@")
+      break
+      ;;
+    esac
+  done
+
+  if [ "${#command[@]}" -lt 1 ]; then
+    bad_usage "no command specified"
+  fi
+
+  log_verbose "command: $(describe_command)"
+}
+
+########################################################################
+# Command execution
+########################################################################
+
+function describe_command() {
+  if [ -n "$command_explicit" ]; then
+    printf '%s -c %s' "$SHELL" "${command[*]}"
+  else
+    printf %s "${command[*]}"
+  fi
+}
+
+function execute_command() {
+  log_verbose "running command "$(describe_command)""
+  (
+    if [ -n "$command_explicit" ]; then
+      "$SHELL" -c "${command[@]}"
+    else
+      "${command[@]}"
+    fi
+    exec 0<&-
+  ) </dev/null
+}
+
+########################################################################
+# Script proper
+########################################################################
+
+parse_args "$@"
+
+case "$debug_level" in
+  "excessive")
+    set -u
+    ;&
+  "normal")
+    set -xET
+    ;;
+esac
+
+assert_dependency gdbus
+
+gdbus monitor -y -d org.freedesktop.login1 |
+  grep --line-buffered -o 'Session.Unlock ()' |
+  while read -r; do
+    emit "unlock detected"
+    exit_code=0
+    execute_command || exit_code=$?
+    if [ -n "$is_once" ]; then
+      exit "$exit_code"
+    elif [ "$exit_code" != 0 ]; then
+      emit ""$(describe_command)" exited with code $exit_code"
+    fi
+  done
