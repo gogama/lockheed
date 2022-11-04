@@ -14,7 +14,7 @@ shopt -s extglob
 ########################################################################
 
 self="$(basename "$0")"
-title="$self: Run commands on Ubuntu after screen unlock/login (by schapper@)"
+title="$self: Run commands on Ubuntu after screen unlock/login"
 version="1.0.0"
 
 err_usage=64
