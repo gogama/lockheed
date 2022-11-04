@@ -1,6 +1,6 @@
 # lockheed
 
-React to screen unlock events in Ubuntu Linux.
+Run tasks automatically when you unlock your computer screen on Ubuntu Linux.
 
 ## Basic Usage
 
@@ -26,14 +26,14 @@ $ lockheed --help
 ## Installation
 
 Copy the `lockheed` script to an appropriate place on your `PATH`, *e.g.*
-`/usr/loca/bin`.
+`/usr/loca/bin/`.
 
 ## Advanced Usage
 
 To create a [systemd](https://www.freedesktop.org/wiki/Software/systemd/)
 user service which does some useful actions when you unlock your
-computer, you can create a service unit file such as
-`my-unlock.service`:
+computer, you can create a [service unit](https://man7.org/linux/man-pages/man5/systemd.service.5.html)
+file such as `unlock.service`:
 
 ```sh
 [Unit]
@@ -48,7 +48,7 @@ RestartSec=3s
 WantedBy=graphical-session.target
 ```
 
-Copy `my-unlock.service` to an appropriate directory for systemd user
+Copy `unlock.service` to an appropriate directory for systemd user
 scripts on your system, for example `~/.config/systemd/user/` and
 enable and start it in the usual way. Boom!
 
