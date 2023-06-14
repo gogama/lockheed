@@ -14,7 +14,7 @@ shopt -s extglob
 ########################################################################
 
 self="$(basename "$0")"
-title="$self: Run commands on Ubuntu after screen unlock/login (by vcschapp@)"
+title="$self: Run commands on Ubuntu after screen lock/unlock/login (by vcschapp@)"
 version="1.0.0"
 
 err_usage=64
@@ -47,6 +47,7 @@ OPTIONS:
                          option, $self will continue waiting on login
                          and screen unlock events and executing COMMAND
                          until terminated by a signal.
+  -l, --lock            run command on screen lock instead.                         
   -v, --verbose         enable verbose logging.
       --version         print version information and exit.
       --x-debug         enable excessive debug settings.
@@ -101,6 +102,8 @@ command=()
 command_explicit=
 debug_level=
 is_once=
+screenevent_title='unlock detected'
+screenevent_hint='Session.Unlock ()'
 
 function parse_args() {
   local explicit_command=
@@ -137,6 +140,10 @@ function parse_args() {
       ;;
     -o|--once)
       is_once="$arg"
+      ;;
+    -l|--lock)
+      screenevent_title='lock detected'
+      screenevent_hint="{'LockedHint': <true>}"
       ;;
     -v|--verbose)
       is_verbose="$arg"
@@ -204,9 +211,9 @@ esac
 assert_dependency gdbus
 
 gdbus monitor -y -d org.freedesktop.login1 |
-  grep --line-buffered -o 'Session.Unlock ()' |
+  grep --line-buffered -o "$screenevent_hint" |
   while read -r; do
-    emit "unlock detected"
+    emit "$screenevent_title"
     exit_code=0
     execute_command || exit_code=$?
     if [ -n "$is_once" ]; then
